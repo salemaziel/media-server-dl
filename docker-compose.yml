@@ -1,0 +1,133 @@
+version: "3.6"
+services:
+  gluetun:
+    container_name: gluetun
+    image: qmcgaw/gluetun
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - VPNSP=${VPN_PROVIDER}
+      - OPENVPN_USER=${OVPN_USER}
+      - OPENVPN_PASSWORD=${OVPN_PASS}
+      - COUNTRY=${COUNTRY}
+      - SERVER_HOSTNAME=${SERVER_HOSTNAME}
+#      - HTTPPROXY=on
+#      - TZ=America/Los_Angeles
+#      - FIREWALL_OUTBOUND_SUBNETS=192.168.1.0/24
+#      - PORT_FORWARDING_STATUS_FILE=/gluetun/forwarded_port
+     secrets:
+       - ovpn_user
+       - ovpn_pass
+    ports:
+#      - 9091:9091 # Transmission
+#      - 6882:6882 # Rtorrent
+      - 8090:8090 # Qbittorrent UI port
+      - 9117:9117
+      - 6881:6881 # Qbittorrent torrent port
+      - 6881:6881/udp 
+      - 8040:8000 # Gluetun HTTP Control Server
+      - 8989:8989 # Sonarr port
+      - 7878:7878 # Radarr port
+      - 9696:9696 # Prowlarr port
+    volumes:
+      - ./gluetun-data:/gluetun
+#    sysctls: # Only needed if ipv6 not disabled on system
+#      - net.ipv6.conf.all.disable_ipv6=1
+    restart: unless-stopped
+    
+#  torrent:
+#    container_name: transmission
+#    image: ghcr.io/linuxserver/transmission
+#    environment:
+#      - PUID=${PUID}
+#      - PGID=${PGID}
+#      - TZ=America/Los_Angeles
+#    volumes:
+#      - ./transmission-config:/config
+#      - ./downloads/movies:/movies
+#      - ./downloads/tv_shows:/tv_shows
+#    network_mode: service:gluetun
+#    restart: unless-stopped
+    
+  qbittorrent:
+    container_name: qbittorrent
+    image: linuxserver/qbittorrent
+    environment:
+      - PUID=1024
+      - PGID=101
+      - TZ=America/Los_Angeles
+      - UMASK_SET=022
+      - WEBUI_PORT=8090
+    volumes:
+      - ./qbt-config:/config
+      - ./downloads:/downloads
+      - ./downloads/movies:/movies
+      - ./downloads/tv_shows:/tv_shows
+    network_mode: service:gluetun
+    restart: unless-stopped
+    
+  sonarr:
+    container_name: sonarr
+    image: ghcr.io/linuxserver/sonarr:latest
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=America/Los_Angeles
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ./sonarr:/config # config files
+      - ./downloads/movies:/movies
+      - ./downloads/tv_shows:/tv_shows
+      - ./downloads:/downloads
+    restart: unless-stopped
+    network_mode: service:gluetun
+    depends_on:
+      - prowlarr
+      - qbittorrent
+      
+  radarr:
+    container_name: radarr
+    image: ghcr.io/linuxserver/radarr:latest
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=America/Los_Angeles
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ./radarr:/config # config files
+      - ./downloads/movies:/movies
+      - ./downloads/tv_shows:/tv_shows
+      - ./downloads:/downloads
+    restart: unless-stopped
+    network_mode: service:gluetun
+    depends_on:
+      - prowlarr
+      - qbittorrent
+
+  prowlarr:
+    image: linuxserver/prowlarr:develop
+    container_name: prowlarr
+    network_mode: host
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=America/Los_Angeles
+    volumes:
+      - ./prowlarr:/config
+#    ports:
+#      - 9696:9696
+    restart: unless-stopped
+    network_mode: service:gluetun
+    depends_on:
+      - gluetun
+      - qbittorrent
+
+secrets:
+   ovpn_user:
+     file: ovpn_user.txt
+   ovpn_pass:
+     file: ovpn_pass.txt
